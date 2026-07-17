@@ -1,0 +1,88 @@
+`timescale 1ps / 1ps
+
+module tb_spi_slave_control;
+
+    // Testbench Inputs
+    reg        PCLK;
+    reg        PRESETn;
+    reg        mstr;
+    reg        spiswai;
+    reg [1:0]  spi_mode;
+    reg        send_data;
+    reg [15:0] BaudRateDivisor;
+
+    // Testbench Outputs
+    wire       receive_data;
+    wire       ss;
+    wire       tip;
+
+    // Instantiate the Device Under Test (DUT)
+    spi_slave_control_select dut (
+        .PCLK(PCLK),
+        .PRESETn(PRESETn),
+        .mstr(mstr),
+        .spiswai(spiswai),
+        .spi_mode(spi_mode),
+        .send_data(send_data),
+        .BaudRateDivisor(BaudRateDivisor),
+        .receive_data(receive_data),
+        .ss(ss),
+        .tip(tip)
+    );
+
+    // Clock generation (10ps period)
+    initial PCLK = 1;
+    always #5 PCLK = ~PCLK;
+
+    initial begin
+        // Time 0ps: Initial states
+        PRESETn         = 0;
+        mstr            = 1;
+        spiswai         = 0;
+        spi_mode        = 2'b00;
+        send_data       = 0;
+        
+        // Initial Divisor = 16 (Binary: 010000)
+        BaudRateDivisor = 16'd16; 
+
+        // Bring system out of reset
+        #25 PRESETn = 1;
+
+        // ---------------------------------------------------
+        // First Transfer
+        // ---------------------------------------------------
+        // Wait until ~1170ps to fire the first send_data pulse
+        #1145; 
+        send_data = 1;
+        #10;
+        send_data = 0;
+
+        // ---------------------------------------------------
+        // Configuration Change
+        // ---------------------------------------------------
+        // Change Divisor to 8 (Binary: 001000) and Mode to 10 at ~1540ps
+        #360;
+        BaudRateDivisor = 16'd8;  
+        spi_mode        = 2'b10;
+
+        // ---------------------------------------------------
+        // Second Transfer
+        // ---------------------------------------------------
+        // Fire second send_data pulse at ~1570ps
+        #30;
+        send_data = 1;
+        #10;
+        send_data = 0;
+
+        // Run until ~2000ps and finish
+        #400;
+        $finish;
+    end
+
+    // Dump waveforms for EPWave
+    initial begin
+        $dumpfile("spi_control_sim.vcd");
+        $dumpvars(0, tb_spi_slave_control);
+    end
+
+endmodule
