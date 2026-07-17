@@ -1,0 +1,107 @@
+`timescale 1ps / 1ps
+
+module tb_shift_reg;
+
+    // Inputs
+    reg        PCLK;
+    reg        PRESETn;
+    reg        ss;
+    reg        send_data;
+    reg        lsbfe;
+    reg        cpha;
+    reg        cpol;
+    reg        flag_low;
+    reg        flag_high;
+    reg        flags_low;
+    reg        flags_high;
+    reg [7:0]  data_mosi;
+    reg        miso;
+    reg        receive_data;
+
+    // Outputs
+    wire       mosi;
+    wire [7:0] data_miso;
+
+    // Instantiate the Unit Under Test (UUT)
+    shift_reg uut (
+        .PCLK(PCLK), 
+        .PRESETn(PRESETn), 
+        .ss(ss), 
+        .send_data(send_data), 
+        .lsbfe(lsbfe), 
+        .cpha(cpha), 
+        .cpol(cpol), 
+        .flag_low(flag_low), 
+        .flag_high(flag_high), 
+        .flags_low(flags_low), 
+        .flags_high(flags_high), 
+        .data_mosi(data_mosi), 
+        .miso(miso), 
+        .receive_data(receive_data), 
+        .mosi(mosi), 
+        .data_miso(data_miso)
+    );
+
+    // Clock Generation (10ps period)
+    initial PCLK = 1;
+    always #5 PCLK = ~PCLK;
+
+    // Stimulus process
+    initial begin
+        // Initialize Inputs
+        PRESETn      = 0;
+        ss           = 1;
+        send_data    = 0;
+        lsbfe        = 0; // MSB First
+        cpha         = 0;
+        cpol         = 0;
+        flag_low     = 0;
+        flag_high    = 0;
+        flags_low    = 0;
+        flags_high   = 0;
+        data_mosi    = 8'b10101010; // Data shown in the waveform
+        miso         = 0;
+        receive_data = 0;
+
+        // Reset Sequence
+        #25;
+        PRESETn = 1;
+        
+        // Advance to ~300,000ps to match waveform timeline start
+        #299975;
+
+        // Start Transfer Sequence
+        ss = 0;
+        send_data = 1;
+        #10;
+        send_data = 0;
+
+        // Simulate 8 SPI Clock cycles using flags
+        repeat(8) begin
+            // Pulse flag_high (Sample Edge for CPOL=0, CPHA=0)
+            #20 flag_high = 1; flags_high = 1;
+            #10 flag_high = 0; flags_high = 0;
+            
+            // Pulse flag_low (Shift Edge for CPOL=0, CPHA=0)
+            #20 flag_low = 1; flags_low = 1;
+            #10 flag_low = 0; flags_low = 0;
+        end
+
+        // Conclude transfer
+        #20;
+        receive_data = 1; // Update data_miso
+        #10;
+        receive_data = 0;
+        ss = 1;
+
+        #50;
+        $finish;
+    end
+
+    // Dump waveforms
+    initial begin
+        $dumpfile("shift_reg_sim.vcd");
+        $dumpvars(0, tb_shift_reg);
+    end
+
+endmodule
