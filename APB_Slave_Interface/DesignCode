@@ -1,0 +1,63 @@
+module apb_spi_slave (
+    // APB Bus Interface
+    input  wire        PCLK,
+    input  wire        PRESETn,
+    input  wire [31:0] PADDR,
+    input  wire        PSEL,
+    input  wire        PENABLE,
+    input  wire        PWRITE,
+    input  wire [31:0] PWDATA,
+    output reg  [31:0] PRDATA,
+    output wire        PREADY,
+    output wire        PSLVERR,
+
+    // Interface to actual SPI core logic (Internal signals)
+    output reg  [31:0] spi_ctrl_reg,
+    output reg  [31:0] spi_tx_reg,
+    input  wire [31:0] spi_status_reg,
+    input  wire [31:0] spi_rx_reg
+);
+
+    // APB Protocol Control Signals
+    wire apb_write = PSEL & PENABLE & PWRITE;
+    wire apb_read  = PSEL & ~PWRITE; 
+    // PREADY is tied high for zero-wait-state access. 
+    // If your SPI needs time to process, you would pull this low to stall the bus.
+    assign PREADY  = 1'b1; 
+    assign PSLVERR = 1'b0; // No error generation in this basic design
+
+    // ---------------------------------------------------------
+    // WRITE LOGIC (Master writes to Slave)
+    // ---------------------------------------------------------
+    always @(posedge PCLK or negedge PRESETn) begin
+        if (!PRESETn) begin
+            spi_ctrl_reg <= 32'h0;
+            spi_tx_reg   <= 32'h0;
+        end else if (apb_write) begin
+            case (PADDR[7:0]) // Decoding lower 8 bits of address
+                8'h00: spi_ctrl_reg <= PWDATA;
+                8'h08: spi_tx_reg   <= PWDATA;
+                // Status and RX are read-only from the bus perspective
+                default: ; // Do nothing for unmapped or read-only addresses
+            endcase
+        end
+    end
+
+    // ---------------------------------------------------------
+    // READ LOGIC (Master reads from Slave)
+    // ---------------------------------------------------------
+    always @(*) begin
+        if (apb_read) begin
+            case (PADDR[7:0])
+                8'h00: PRDATA = spi_ctrl_reg;
+                8'h04: PRDATA = spi_status_reg;
+                8'h08: PRDATA = spi_tx_reg;
+                8'h0C: PRDATA = spi_rx_reg;
+                default: PRDATA = 32'h0; // Return 0 for unmapped addresses
+            endcase
+        end else begin
+            PRDATA = 32'h0;
+        end
+    end
+
+endmodule
