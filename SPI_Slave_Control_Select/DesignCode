@@ -1,0 +1,58 @@
+`timescale 1ps / 1ps
+
+module spi_slave_control_select (
+    // Clock and Reset
+    input  wire        PCLK,
+    input  wire        PRESETn,
+    
+    // Control and Configuration Inputs
+    input  wire        mstr,
+    input  wire        spiswai,
+    input  wire [1:0]  spi_mode,
+    input  wire        send_data,
+    input  wire [15:0] BaudRateDivisor,
+    
+    // Outputs
+    output reg         receive_data,
+    output reg         ss,
+    output reg         tip
+);
+
+    // Internal counter to track the duration of the SPI transfer
+    reg [15:0] counter;
+    
+    // The waveform indicates the transfer duration is BaudRateDivisor * 2
+    wire [15:0] transfer_limit = (BaudRateDivisor << 1);
+
+    always @(posedge PCLK or negedge PRESETn) begin
+        if (!PRESETn) begin
+            ss           <= 1'b1; // Slave select is active low
+            tip          <= 1'b0; // TIP is active high
+            receive_data <= 1'b0;
+            counter      <= 16'd0;
+        end else begin
+            // receive_data acts as a 1-cycle completion pulse
+            receive_data <= 1'b0;
+
+            if (tip) begin
+                // Optional wait mode halt logic could be injected here using 'spiswai'
+                
+                // If transfer is in progress, count up to the calculated limit
+                if (counter >= transfer_limit - 1) begin
+                    tip          <= 1'b0; // De-assert Transfer In Progress
+                    ss           <= 1'b1; // De-assert Slave Select (pull high)
+                    receive_data <= 1'b1; // Signal that data reception is complete
+                    counter      <= 16'd0;
+                end else begin
+                    counter <= counter + 16'd1;
+                end
+            end else if (send_data && mstr) begin
+                // Initiate the transfer only if configured as Master
+                tip     <= 1'b1;
+                ss      <= 1'b0;
+                counter <= 16'd0;
+            end
+        end
+    end
+
+endmodule
