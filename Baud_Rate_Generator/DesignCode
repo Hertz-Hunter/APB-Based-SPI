@@ -1,0 +1,61 @@
+`timescale 1ps / 1ps
+
+module Baud_rate_generator (
+    input  wire        PCLK,
+    input  wire        PRESETn,
+    input  wire [1:0]  spi_mode,
+    input  wire        spiswai,
+    input  wire [2:0]  sppr,      
+    input  wire [2:0]  spr,       
+    input  wire        cpol,      
+    input  wire        cpha,      
+    input  wire        ss,        
+    
+    output reg         sclk,
+    output reg         flag_low,
+    output reg         flag_high,
+    output reg         flags_low,
+    output reg         flags_high,
+    output wire [15:0] BaudRateDivisor
+);
+
+    // Divisor Calculation: (sppr + 1) * 2^(spr + 1)
+    assign BaudRateDivisor = (sppr + 1) << (spr + 1);
+
+    // Internal counter for clock division
+    reg [15:0] count;
+
+    always @(posedge PCLK or negedge PRESETn) begin
+        if (!PRESETn) begin
+            count      <= 16'd0;
+            sclk       <= cpol; 
+            flag_low   <= 1'b0;
+            flag_high  <= 1'b0;
+            flags_low  <= 1'b0;
+            flags_high <= 1'b0;
+        end else begin
+            // Pulse flags default to 0 every clock cycle
+            flag_low   <= 1'b0;
+            flag_high  <= 1'b0;
+            flags_low  <= 1'b0;
+            flags_high <= 1'b0;
+            
+            // Toggle clock and set pulses when counter reaches divisor limit
+            if (count >= (BaudRateDivisor - 1)) begin
+                count <= 16'd0;
+                sclk  <= ~sclk;
+
+                if (~sclk == 1'b1) begin
+                    flag_high  <= 1'b1;
+                    flags_high <= 1'b1;
+                end else begin
+                    flag_low   <= 1'b1;
+                    flags_low  <= 1'b1;
+                end
+            end else begin
+                count <= count + 16'd1;
+            end
+        end
+    end
+
+endmodule
