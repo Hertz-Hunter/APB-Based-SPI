@@ -1,0 +1,85 @@
+`timescale 1ps / 1ps
+
+module shift_reg (
+    // Clock and Reset
+    input  wire       PCLK,
+    input  wire       PRESETn,
+    
+    // Control Signals
+    input  wire       ss,
+    input  wire       send_data,
+    input  wire       lsbfe,
+    input  wire       cpha,
+    input  wire       cpol,
+    
+    // Timing Flags
+    input  wire       flag_low,
+    input  wire       flag_high,
+    input  wire       flags_low,
+    input  wire       flags_high,
+    
+    // Data Interface
+    input  wire [7:0] data_mosi,
+    input  wire       miso,
+    input  wire       receive_data,
+    
+    // Outputs
+    output reg        mosi,
+    output reg  [7:0] data_miso
+);
+
+    // Determine sample and shift edges based on CPOL and CPHA settings
+    wire sample_edge = (cpol == cpha) ? flag_high : flag_low;
+    wire shift_edge  = (cpol != cpha) ? flag_high : flag_low;
+
+    // Internal registers
+    reg [7:0] shift_register;
+    reg [7:0] rx_register;
+
+    always @(posedge PCLK or negedge PRESETn) begin
+        if (!PRESETn) begin
+            shift_register <= 8'd0;
+            rx_register    <= 8'd0;
+            data_miso      <= 8'd0;
+            mosi           <= 1'b0;
+        end else begin
+            
+            // Continuous MOSI assignment when Slave Select is active
+            if (!ss) begin
+                mosi <= lsbfe ? shift_register[0] : shift_register[7];
+            end else begin
+                mosi <= 1'b0;
+            end
+
+            // Parallel load from APB Interface
+            if (send_data) begin
+                shift_register <= data_mosi;
+            end 
+            // Serial shift and sample logic
+            else if (!ss) begin
+                
+                // Sample incoming MISO data
+                if (sample_edge) begin
+                    if (!lsbfe) 
+                        rx_register <= {rx_register[6:0], miso}; // MSB first
+                    else        
+                        rx_register <= {miso, rx_register[7:1]}; // LSB first
+                end
+
+                // Shift outgoing MOSI data
+                if (shift_edge) begin
+                    if (!lsbfe) 
+                        shift_register <= {shift_register[6:0], 1'b0};
+                    else        
+                        shift_register <= {1'b0, shift_register[7:1]};
+                end
+            end
+
+            // Push received data to output when transfer completes
+            if (receive_data) begin
+                data_miso <= rx_register;
+            end
+        end
+    end
+
+endmodule
