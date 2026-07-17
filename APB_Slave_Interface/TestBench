@@ -1,0 +1,122 @@
+`timescale 1ns / 1ps
+
+module tb_apb_spi_slave;
+
+    // Testbench signals
+    reg         PCLK;
+    reg         PRESETn;
+    reg  [31:0] PADDR;
+    reg         PSEL;
+    reg         PENABLE;
+    reg         PWRITE;
+    reg  [31:0] PWDATA;
+    wire [31:0] PRDATA;
+    wire        PREADY;
+    wire        PSLVERR;
+
+    // Dummy internal SPI signals for testbench observation
+    wire [31:0] spi_ctrl_reg;
+    wire [31:0] spi_tx_reg;
+    reg  [31:0] spi_status_reg;
+    reg  [31:0] spi_rx_reg;
+
+    // Instantiate the Unit Under Test (UUT)
+    apb_spi_slave uut (
+        .PCLK(PCLK), .PRESETn(PRESETn), .PADDR(PADDR),
+        .PSEL(PSEL), .PENABLE(PENABLE), .PWRITE(PWRITE),
+        .PWDATA(PWDATA), .PRDATA(PRDATA), .PREADY(PREADY),
+        .PSLVERR(PSLVERR),
+        .spi_ctrl_reg(spi_ctrl_reg), .spi_tx_reg(spi_tx_reg),
+        .spi_status_reg(spi_status_reg), .spi_rx_reg(spi_rx_reg)
+    );
+
+    // Clock Generation (100MHz)
+    always #5 PCLK = ~PCLK;
+
+    // APB Write Task
+    task apb_write(input [31:0] addr, input [31:0] data);
+        begin
+            // Setup Phase
+            @(posedge PCLK);
+            PSEL   = 1;
+            PWRITE = 1;
+            PADDR  = addr;
+            PWDATA = data;
+            PENABLE = 0;
+            
+            // Access Phase
+            @(posedge PCLK);
+            PENABLE = 1;
+            
+            // Wait for ready
+            wait(PREADY);
+            
+            // End of transfer
+            @(posedge PCLK);
+            PSEL    = 0;
+            PENABLE = 0;
+            PWRITE  = 0;
+        end
+    endtask
+
+    // APB Read Task
+    task apb_read(input [31:0] addr);
+        begin
+            // Setup Phase
+            @(posedge PCLK);
+            PSEL   = 1;
+            PWRITE = 0;
+            PADDR  = addr;
+            PENABLE = 0;
+            
+            // Access Phase
+            @(posedge PCLK);
+            PENABLE = 1;
+            
+            // Wait for ready and capture data
+            wait(PREADY);
+            $display("Time=%0t: Read Address 0x%0h -> Data 0x%0h", $time, addr, PRDATA);
+            
+            // End of transfer
+            @(posedge PCLK);
+            PSEL    = 0;
+            PENABLE = 0;
+        end
+    endtask
+
+    // Simulation Sequence
+    initial begin
+        // Initialize Inputs
+        PCLK = 0; PRESETn = 0; PSEL = 0; PENABLE = 0; PWRITE = 0;
+        PADDR = 0; PWDATA = 0;
+        spi_status_reg = 32'h0000_0001; // Mock status: TX Empty
+        spi_rx_reg     = 32'hDEADBEEF;  // Mock received data
+
+        // Reset the system
+        #20 PRESETn = 1;
+
+        // 1. Write to Control Register (Offset 0x00)
+        apb_write(32'h0000_0000, 32'h0000_0003); // e.g., Enable SPI, Master Mode
+        
+        // 2. Write to TX Register (Offset 0x08)
+        apb_write(32'h0000_0008, 32'hA5A5A5A5);  // Data to send
+
+        // 3. Read back Control Register
+        apb_read(32'h0000_0000);
+
+        // 4. Read Status Register (Offset 0x04)
+        apb_read(32'h0000_0004);
+
+        // 5. Read RX Register (Offset 0x0C)
+        apb_read(32'h0000_000C);
+
+        #50 $finish;
+    end
+
+    // Waveform dumping (Optional, for tools like GTKWave/ModelSim)
+    initial begin
+        $dumpfile("apb_spi_sim.vcd");
+        $dumpvars(0, tb_apb_spi_slave);
+    end
+
+endmodule
