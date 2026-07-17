@@ -1,0 +1,94 @@
+`timescale 1ps / 1ps
+
+module tb_baud_dynamic_test;
+
+    // Inputs
+    reg        PCLK;
+    reg        PRESETn;
+    reg [1:0]  spi_mode;
+    reg        spiswai;
+    reg [2:0]  sppr;
+    reg [2:0]  spr;
+    reg        cpol;
+    reg        cpha;
+    reg        ss;
+
+    // Outputs
+    wire        sclk;
+    wire        flag_low;
+    wire        flag_high;
+    wire        flags_low;
+    wire        flags_high;
+    wire [15:0] BaudRateDivisor;
+
+    // Instantiate the Device Under Test (DUT)
+    Baud_rate_generator dut (
+        .PCLK(PCLK), 
+        .PRESETn(PRESETn), 
+        .spi_mode(spi_mode), 
+        .spiswai(spiswai), 
+        .sppr(sppr), 
+        .spr(spr), 
+        .cpol(cpol), 
+        .cpha(cpha), 
+        .ss(ss), 
+        .sclk(sclk), 
+        .flag_low(flag_low), 
+        .flag_high(flag_high), 
+        .flags_low(flags_low), 
+        .flags_high(flags_high), 
+        .BaudRateDivisor(BaudRateDivisor)
+    );
+
+    // Clock generation (10ps period)
+    initial PCLK = 1;
+    always #5 PCLK = ~PCLK;
+
+    // Stimulus execution to match the target waveform
+    initial begin
+        // Time 0ps: Initialize Signals
+        PRESETn  = 0;
+        spi_mode = 2'b00;
+        sppr     = 3'b000;
+        spr      = 3'b000;
+        cpol     = 0;
+        cpha     = 0;
+        ss       = 1;
+        spiswai  = 0;
+
+        // Bring out of reset
+        #25;
+        PRESETn = 1;
+        ss = 0;
+
+        // Time 350ps: Update Prescaler and Divisor to 010 (Binary 2)
+        // BaudRateDivisor changes to 24 (Binary 011000)
+        #325;
+        sppr = 3'b010; 
+        spr  = 3'b010; 
+        
+        // Time 550ps: Max out Prescaler and Divisor to 111 (Binary 7)
+        #200;
+        sppr = 3'b111; 
+        spr  = 3'b111; 
+
+        // Time 750ps: Change spi_mode to 01
+        #200;
+        spi_mode = 2'b01;
+
+        // Time 900ps: Change spi_mode to 10
+        #150;
+        spi_mode = 2'b10;
+
+        // End simulation at 1000ps
+        #100;
+        $finish;
+    end
+
+    // Waveform dumping config for EPWave
+    initial begin
+        $dumpfile("baud_sim_dynamic.vcd");
+        $dumpvars(0, tb_baud_dynamic_test);
+    end
+
+endmodule
