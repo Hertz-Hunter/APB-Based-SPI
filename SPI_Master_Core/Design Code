@@ -1,0 +1,79 @@
+`timescale 1ps / 1ps
+
+module spi_top (
+    // APB Bus Interface
+    input  wire        PCLK,
+    input  wire        PRESETn,
+    input  wire [31:0] PADDR,
+    input  wire        PSEL,
+    input  wire        PENABLE,
+    input  wire        PWRITE,
+    input  wire [31:0] PWDATA,
+    output wire [31:0] PRDATA,
+    output wire        PREADY,
+    output wire        PSLVERR,
+
+    // SPI Bus Interface
+    output wire        sclk,
+    output wire        mosi,
+    input  wire        miso,
+    output wire        ss
+);
+
+    // ---------------------------------------------------------
+    // Internal Interconnect Wires
+    // ---------------------------------------------------------
+    wire [1:0]  spi_mode_w;
+    wire [2:0]  sppr_w, spr_w;
+    wire        cpol_w, cpha_w, lsbfe_w, mstr_w, spiswai_w;
+    wire        send_data_w, receive_data_w;
+    wire        flag_low_w, flag_high_w, flags_low_w, flags_high_w;
+    wire [15:0] baud_div_w;
+    wire [7:0]  data_mosi_w, data_miso_w;
+    wire        tip_w;
+
+    // ---------------------------------------------------------
+    // 1. APB Slave Interface Instantiation
+    // ---------------------------------------------------------
+    apb_spi_slave APB_SLAVE_INTERFACE (
+        .PCLK(PCLK), .PRESETn(PRESETn), .PADDR(PADDR),
+        .PSEL(PSEL), .PENABLE(PENABLE), .PWRITE(PWRITE),
+        .PWDATA(PWDATA), .PRDATA(PRDATA), .PREADY(PREADY), .PSLVERR(PSLVERR)
+        // Note: You will map the internal configuration wires here
+    );
+
+    // ---------------------------------------------------------
+    // 2. Baudrate Generator Instantiation
+    // ---------------------------------------------------------
+    Baud_rate_generator BAUD_GEN (
+        .PCLK(PCLK), .PRESETn(PRESETn),
+        .spi_mode(spi_mode_w), .spiswai(spiswai_w),
+        .sppr(sppr_w), .spr(spr_w), .cpol(cpol_w), .cpha(cpha_w), .ss(ss),
+        .sclk(sclk), .flag_low(flag_low_w), .flag_high(flag_high_w),
+        .flags_low(flags_low_w), .flags_high(flags_high_w),
+        .BaudRateDivisor(baud_div_w)
+    );
+
+    // ---------------------------------------------------------
+    // 3. SPI Slave Control Select Instantiation
+    // ---------------------------------------------------------
+    spi_slave_control_select CONTROL_SELECT (
+        .PCLK(PCLK), .PRESETn(PRESETn),
+        .mstr(mstr_w), .spiswai(spiswai_w), .spi_mode(spi_mode_w),
+        .send_data(send_data_w), .BaudRateDivisor(baud_div_w),
+        .receive_data(receive_data_w), .ss(ss), .tip(tip_w)
+    );
+
+    // ---------------------------------------------------------
+    // 4. Shift Register Instantiation
+    // ---------------------------------------------------------
+    shift_reg SHIFTER (
+        .PCLK(PCLK), .PRESETn(PRESETn), .ss(ss),
+        .send_data(send_data_w), .lsbfe(lsbfe_w), .cpha(cpha_w), .cpol(cpol_w),
+        .flag_low(flag_low_w), .flag_high(flag_high_w),
+        .flags_low(flags_low_w), .flags_high(flags_high_w),
+        .data_mosi(data_mosi_w), .miso(miso),
+        .receive_data(receive_data_w), .mosi(mosi), .data_miso(data_miso_w)
+    );
+
+endmodule
