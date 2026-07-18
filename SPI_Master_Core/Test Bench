@@ -1,0 +1,135 @@
+`timescale 1ps / 1ps
+
+module spi_top_tb;
+
+    // ---------------------------------------------------------
+    // APB Bus Signals (Testbench acts as APB Master)
+    // ---------------------------------------------------------
+    reg         PCLK;
+    reg         PRESETn;
+    reg  [31:0] PADDR;
+    reg         PSEL;
+    reg         PENABLE;
+    reg         PWRITE;
+    reg  [31:0] PWDATA;
+    
+    wire [31:0] PRDATA;
+    wire        PREADY;
+    wire        PSLVERR;
+
+    // ---------------------------------------------------------
+    // SPI Bus Signals
+    // ---------------------------------------------------------
+    wire        sclk;
+    wire        mosi;
+    reg         miso;
+    wire        ss;
+
+    // ---------------------------------------------------------
+    // Instantiate the Top Module (Device Under Test)
+    // ---------------------------------------------------------
+    spi_top DUT (
+        .PCLK(PCLK), 
+        .PRESETn(PRESETn), 
+        .PADDR(PADDR),
+        .PSEL(PSEL), 
+        .PENABLE(PENABLE), 
+        .PWRITE(PWRITE),
+        .PWDATA(PWDATA), 
+        .PRDATA(PRDATA), 
+        .PREADY(PREADY), 
+        .PSLVERR(PSLVERR),
+        .sclk(sclk), 
+        .mosi(mosi), 
+        .miso(miso), 
+        .ss(ss)
+    );
+
+    // ---------------------------------------------------------
+    // Clock Generation (10ps period)
+    // ---------------------------------------------------------
+    initial PCLK = 1;
+    always #5 PCLK = ~PCLK;
+
+    // ---------------------------------------------------------
+    // APB Write Task (Simulates an ARM processor writing to the bus)
+    // ---------------------------------------------------------
+    task apb_write(input [31:0] addr, input [31:0] data);
+        begin
+            // Setup Phase
+            @(posedge PCLK);
+            PSEL    = 1;
+            PWRITE  = 1;
+            PADDR   = addr;
+            PWDATA  = data;
+            PENABLE = 0;
+            
+            // Access Phase
+            @(posedge PCLK);
+            PENABLE = 1;
+            
+            // Wait for Slave to be ready
+            wait(PREADY);
+            
+            // End of transfer
+            @(posedge PCLK);
+            PSEL    = 0;
+            PENABLE = 0;
+            PWRITE  = 0;
+        end
+    endtask
+
+    // ---------------------------------------------------------
+    // Main Simulation Sequence
+    // ---------------------------------------------------------
+    initial begin
+        // 1. Initialize all inputs
+        PRESETn = 0;
+        PSEL    = 0; 
+        PENABLE = 0; 
+        PWRITE  = 0; 
+        PADDR   = 32'h0; 
+        PWDATA  = 32'h0;
+        miso    = 0;
+
+        // 2. Bring system out of reset
+        #25;
+        PRESETn = 1;
+        #20;
+
+        // 3. Configure the SPI Controller via APB Interface
+        // (Assuming typical memory map: 0x00=Control, 0x04=Baud, 0x08=Data)
+        
+        // Write to Control Register 1 (Enable SPI, Master Mode, etc.)
+        // Matches the 11110000 seen in your waveform for SPI_CR_1
+        apb_write(32'h0000_0000, 32'b11110000); 
+        
+        // Write to Baud Rate Register (Set prescaler and divisor)
+        apb_write(32'h0000_0004, 32'b00000000); 
+
+        // 4. Initiate Data Transfer
+        // Write 10101010 to the Transmit Data Register
+        // This triggers the SPI Slave Control Select and Shift Register
+        apb_write(32'h0000_0008, 32'b10101010); 
+
+        // 5. Simulate Incoming Data on MISO
+        // Toggling MISO so the shift register has something to receive
+        #100 miso = 1;
+        #100 miso = 0;
+        #100 miso = 1;
+        #100 miso = 0;
+
+        // Let the simulation run long enough for the transfer to finish
+        #2000;
+        $finish;
+    end
+
+    // ---------------------------------------------------------
+    // Waveform Dumping
+    // ---------------------------------------------------------
+    initial begin
+        $dumpfile("spi_top_sim.vcd");
+        $dumpvars(0, spi_top_tb);
+    end
+
+endmodule
